@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **`buffa::MessageName` trait exposes a generated message's protobuf
+  identifiers as compile-time `&'static str` constants.** Codegen emits
+  `impl MessageName for #Msg` (and `for #MsgView<'a>`) with four consts:
+  `PACKAGE` (`"my.pkg"`, empty for the unnamed root package), `NAME`
+  (`"Outer.Inner"` — unqualified, with `.` between nesting levels),
+  `FULL_NAME` (`"my.pkg.Outer.Inner"`), and `TYPE_URL`
+  (`"type.googleapis.com/my.pkg.Outer.Inner"` — the
+  `google.protobuf.Any.type_url` form). All four are computed at codegen
+  time as string literals, so there's no runtime allocation or
+  concatenation — unlike `prost::Name`, whose `full_name()` and
+  `type_url()` are runtime `format!` calls. `PACKAGE` and `NAME` are
+  separate consts because the dotted `FULL_NAME` cannot be split
+  unambiguously (`foo.Bar.Baz` could be package `foo.Bar` + message `Baz`
+  or package `foo` + nested `Bar.Baz`).
+
+  The trait has no supertrait — it doesn't reach into the wire codec —
+  so view types implement it too: a generic event-sourcing registry can
+  bound on `T: MessageName` and dispatch zero-copy views and owned
+  messages identically. Useful for type-erased registries, logging, and
+  any code that needs the protobuf name without the descriptor machinery.
+  The inherent `Foo::TYPE_URL` const generated since 0.4.0 is unchanged
+  and equal to `<Foo as MessageName>::TYPE_URL`; for messages that also
+  implement `ExtensionSet`, `FULL_NAME` is equal to
+  `ExtensionSet::PROTO_FQN` (all derive from the same codegen source).
+  `MessageName` is **not** object-safe (associated `const` only) — use it
+  as a bound, not `dyn MessageName`. Migrating from `prost::Name`: rename
+  the bound and replace runtime `M::full_name()` / `M::type_url()` calls
+  with the consts. ([#108](https://github.com/anthropics/buffa/pull/108),
+  by @yordis)
+
 - **`buf.build/anthropics/buffa` is published to the public Buf Schema
   Registry.** `buf generate` can now reference `protoc-gen-buffa` as a
   `remote:` plugin with no local install: `remote: buf.build/anthropics/buffa`
